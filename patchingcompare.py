@@ -5,7 +5,7 @@ title:          patchingcompare.py
 description:    tool to help compare packing list to patching list
 author:         Willis Lin
 last-modify:    20160125
-version:        0.1
+version:        0.2
 usage:          python patchingcompare.py <remote-machine-name> <bz-patching-list>
 python-ver:     2.7.10
 status:         development
@@ -45,7 +45,7 @@ def do_dpkg(remote_machine):
     @return: file name of dpkg list .txt
     """
     # set up remote connection
-    user = 'root'
+    user = raw_input("Username for {}: ".format(remote_machine))
     passwd = getpass.getpass("Password for {} user {}: ".format(remote_machine, user))
     client = paramiko.SSHClient()
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -77,8 +77,45 @@ def compare_meld(dpkg_list_name, patching_list_name):
     """Compare the dpkg list to the patching list with meld"""
     subprocess.Popen(["meld", dpkg_list_name, patching_list_name])
 
+def show_difference(patching_list_name, dpkg_list_name):
+    """Print to screen only where patching list entries differ from dpkg entries"""
+    EQUAL, NEQUAL, MISSING = 1, -1, 0
+    def print_helper(compare, package, pversion, dversion):
+        if compare == EQUAL: prefix = " "
+        elif compare == NEQUAL: prefix = "d"  # d for different
+        else:
+            prefix = "m"  # m for missing
+            dversion = ""
+        print "{} {} - {} - {}".format(prefix, package, pversion, dversion)
+
+    # create reader objects
+    patch_file = open(patching_list_name)
+    dpkg_file = open(dpkg_list_name)
+    delimiter = "    "
+
+    # compare the two files, print the matches
+    for row in patch_file:  # it is assumed the patching list is alpha order
+        [ppkg, pver] = row.rstrip().split(delimiter)
+        try:
+            [dpkg, dver] = dpkg_file.readline().rstrip().split(delimiter)
+            while ppkg > dpkg:
+                [dpkg, dver] = dpkg_file.readline().rstrip().split(delimiter)
+            if ppkg == dpkg:
+                if pver == dver: mode = EQUAL
+                else: mode = NEQUAL
+            else:  # this package is not in dpkg
+                mode = MISSING
+                pass
+        except StopIteration:  # no more dpkg
+            mode = MISSING
+        print_helper(mode, ppkg, pver, dver)
+
+    patch_file.close()
+    dpkg_file.close()
+
 if __name__ == '__main__':
     dpkg_list = do_dpkg(REMOTE_MACHINE)
     print "Package list copied: " + dpkg_list
-    compare_meld(dpkg_list, PATCHING_LIST)
+    # compare_meld(dpkg_list, PATCHING_LIST)
+    show_difference(PATCHING_LIST, dpkg_list)
 
