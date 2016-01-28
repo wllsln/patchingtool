@@ -1,6 +1,15 @@
 # patchingtool
 
-Suggestions for improvement:
+## Usage
+```bash
+python patchingcompare.py <remote-machine-name> <bz-patching-list>
+```
+
+## Dependencies
+1. Python 2.7.10
+2. paramiko (`pip install paramiko`)
+
+## Suggestions for improvement
 * use argparse to setup usage information
 * pull the patching list from bugzilla by providing a bz ticket number
     * use the requests package

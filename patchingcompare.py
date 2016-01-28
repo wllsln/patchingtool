@@ -4,7 +4,7 @@
 title:          patchingcompare.py
 description:    tool to help compare packing list to patching list
 author:         Willis Lin
-last-modify:    20160125
+last-modify:    20160128
 version:        0.2
 usage:          python patchingcompare.py <remote-machine-name> <bz-patching-list>
 python-ver:     2.7.10
@@ -74,12 +74,29 @@ def do_dpkg(remote_machine):
     return output_file_name
 
 def compare_meld(dpkg_list_name, patching_list_name):
-    """Compare the dpkg list to the patching list with meld"""
+    """
+    Compare the dpkg list to the patching list with meld
+
+    @param dpkg_list_name: name of dpkg list
+    @param patching_list_name: name of patching list
+    @return: none, opens the meld process
+    """
     subprocess.Popen(["meld", dpkg_list_name, patching_list_name])
 
 def show_difference(patching_list_name, dpkg_list_name):
-    """Print to screen only where patching list entries differ from dpkg entries"""
+    """
+    Print to screen only where patching list entries differ from dpkg entries
+
+    @param dpkg_list_name: name of dpkg list
+    @param patching_list_name: name of patching list
+    @return: none
+    """
     EQUAL, NEQUAL, MISSING = 1, -1, 0
+    patch_file = open(patching_list_name)
+    dpkg_file = open(dpkg_list_name)
+    delimiter = "    "
+
+    # helper function to print to console with formatting
     def print_helper(compare, package, pversion, dversion):
         if compare == EQUAL: prefix = " "
         elif compare == NEQUAL: prefix = "d"  # d for different
@@ -88,18 +105,20 @@ def show_difference(patching_list_name, dpkg_list_name):
             dversion = ""
         print "{} {} - {} - {}".format(prefix, package, pversion, dversion)
 
-    # create reader objects
-    patch_file = open(patching_list_name)
-    dpkg_file = open(dpkg_list_name)
-    delimiter = "    "
+    # helper function to parse entries from dpkg
+    def parse_dpkg_row(dpkg_row):
+        [pkg, ver] = dpkg_row.rstrip().split(delimiter)
+        pkg = pkg.split(":")[0]  # logic to remove :amd64 after package names
+        return pkg, ver
 
     # compare the two files, print the matches
-    for row in patch_file:  # it is assumed the patching list is alpha order
+    # it is assumed the patching list is alpha order
+    for row in patch_file:
         [ppkg, pver] = row.rstrip().split(delimiter)
         try:
-            [dpkg, dver] = dpkg_file.readline().rstrip().split(delimiter)
+            dpkg, dver = parse_dpkg_row(dpkg_file.readline())
             while ppkg > dpkg:
-                [dpkg, dver] = dpkg_file.readline().rstrip().split(delimiter)
+                dpkg, dver = parse_dpkg_row(dpkg_file.readline())
             if ppkg == dpkg:
                 if pver == dver: mode = EQUAL
                 else: mode = NEQUAL
