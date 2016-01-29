@@ -6,9 +6,6 @@ description:    tool to help compare packing list to patching list
 author:         Willis Lin
 last-modify:    20160128
 version:        0.2
-usage:          python patchingcompare.py <remote-machine-name> <bz-patching-list>
-python-ver:     2.7.10
-status:         development
 """
 
 import getpass
@@ -58,7 +55,7 @@ def do_dpkg(remote_machine):
     output_file_name = "_".join([date,hostname,"dpkg"]) + ".txt"
 
     # generate the dpkg list
-    dpkg_query = "dpkg-query -W -f='${binary:Package}    ${Version}\n'"
+    dpkg_query = "dpkg-query -W -f='${Package}    ${Version}\n'"
     query = " ".join([dpkg_query,">",output_file_name])
     stdin, stdout, stderr = client.exec_command(query)
     time.sleep(2)  # allow dpkg to run
@@ -108,13 +105,12 @@ def show_difference(patching_list_name, dpkg_list_name):
     # helper function to parse entries from dpkg
     def parse_dpkg_row(dpkg_row):
         [pkg, ver] = dpkg_row.rstrip().split(delimiter)
-        pkg = pkg.split(":")[0]  # logic to remove :amd64 after package names
         return pkg, ver
 
     # compare the two files, print the matches
     # it is assumed the patching list is alpha order
     for row in patch_file:
-        [ppkg, pver] = row.rstrip().split(delimiter)
+        [ppkg, pver] = parse_dpkg_row(row)
         try:
             dpkg, dver = parse_dpkg_row(dpkg_file.readline())
             while ppkg > dpkg:
