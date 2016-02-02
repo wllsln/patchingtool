@@ -49,13 +49,22 @@ def do_dpkg(remote_machine):
     client.load_system_host_keys()
     client.connect(remote_machine, username=user, password=passwd)
 
-    # determine pkglist name
+    # pull info from remote machine
+    version_check = "cat /etc/issue.net"
+    stdin, stdout, stderr = client.exec_command(version_check)
+    version = stdout.readlines().pop()  # check for alternative distro
     date = parse_exec_cmd(client.exec_command("date +'%Y%m%d_%H%M%S'"))  # get remote time
     hostname = parse_exec_cmd(client.exec_command("hostname"))  # get remote hostname
-    output_file_name = "_".join([date,hostname,"dpkg"]) + ".txt"
+
+    # dpkg_query based on linux distribution
+    dpkg_query = "dpkg-query -W -f='${Package}    ${Version}\n'"  # default=debian
+    if version.find("CentOS"):
+        is_centos = True
+        hostname = hostname.split(".")[0]  # CentOS hostname includes subdomain
+        dpkg_query = "rpm -qa --qf '%{NAME}    %{VERSION}-%{RELEASE}\n' | sort"
 
     # generate the dpkg list
-    dpkg_query = "dpkg-query -W -f='${Package}    ${Version}\n'"
+    output_file_name = "_".join([date,hostname,"dpkg"]) + ".txt"
     query = " ".join([dpkg_query,">",output_file_name])
     stdin, stdout, stderr = client.exec_command(query)
     time.sleep(2)  # allow dpkg to run
@@ -109,10 +118,10 @@ def show_difference(patching_list_name, dpkg_list_name):
 
     # compare the two files, print the matches
     # it is assumed the patching list is alpha order
+    dpkg, dver = parse_dpkg_row(dpkg_file.readline())
     for row in patch_file:
         [ppkg, pver] = parse_dpkg_row(row)
         try:
-            dpkg, dver = parse_dpkg_row(dpkg_file.readline())
             while ppkg > dpkg:
                 dpkg, dver = parse_dpkg_row(dpkg_file.readline())
             if ppkg == dpkg:
