@@ -15,6 +15,8 @@ import subprocess
 import sys
 import time
 
+regular_dpkg_temp_switch = True  # will integrate this into CLI argument eventually
+
 try:
     REMOTE_MACHINE = sys.argv[1]
     PATCHING_LIST = sys.argv[2]
@@ -58,10 +60,16 @@ def do_dpkg(remote_machine):
 
     # dpkg_query based on linux distribution
     dpkg_query = "dpkg-query -W -f='${Package}    ${Version}\n'"  # default=debian
-    if version.find("CentOS"):
-        is_centos = True
+    if version.find("CentOS") > 0:
         hostname = hostname.split(".")[0]  # CentOS hostname includes subdomain
         dpkg_query = "rpm -qa --qf '%{NAME}    %{VERSION}-%{RELEASE}\n' | sort"
+
+    # switch enabled to just copy over the regular dpkg list
+    if regular_dpkg_temp_switch:
+        if version.find("CentOS") > 0:
+            dpkg_query = "rpm -qa"
+        else:
+            dpkg_query = "dpkg -l"
 
     # generate the dpkg list
     output_file_name = "_".join([date,hostname,"dpkg"]) + ".txt"
@@ -140,6 +148,7 @@ def show_difference(patching_list_name, dpkg_list_name):
 if __name__ == '__main__':
     dpkg_list = do_dpkg(REMOTE_MACHINE)
     print "Package list copied: " + dpkg_list
-    # compare_meld(dpkg_list, PATCHING_LIST)
-    show_difference(PATCHING_LIST, dpkg_list)
+    if not regular_dpkg_temp_switch:
+        # compare_meld(dpkg_list, PATCHING_LIST)
+        show_difference(PATCHING_LIST, dpkg_list)
 
