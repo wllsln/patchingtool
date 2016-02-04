@@ -73,6 +73,9 @@ def do_dpkg(remote_machine):
 
     # generate the dpkg list
     output_file_name = "_".join([date,hostname,"dpkg"]) + ".txt"
+    if regular_dpkg_temp_switch:
+        output_file_name = "_".join([date.split("_")[0],hostname,
+                                     "package","list"]) + ".txt"
     query = " ".join([dpkg_query,">",output_file_name])
     stdin, stdout, stderr = client.exec_command(query)
     time.sleep(2)  # allow dpkg to run
