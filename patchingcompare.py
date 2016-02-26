@@ -2,12 +2,13 @@
 
 """
 title:          patchingcompare.py
-description:    tool to help compare packing list to patching list
+description:    tool to help compare package list to patching list
 author:         Willis Lin
-last-modify:    20160128
-version:        0.2
+last-modify:    20160226
+version:        1.0
 """
 
+import argparse
 import getpass
 import os
 import paramiko
@@ -15,18 +16,33 @@ import subprocess
 import sys
 import time
 
-regular_dpkg_temp_switch = True  # will integrate this into CLI argument eventually
+def init_argparse():
+    """
+    Initialize the argparser.
 
-try:
-    REMOTE_MACHINE = sys.argv[1]
-    PATCHING_LIST = sys.argv[2]
-except IndexError:
-    print "Usage:  patchingcompare.py <remote-machine-name> <bz-patching-list>"
-    sys.exit(1)
+    @retval: ArgumentParser
+    """
+    parser = argparse.ArgumentParser(prog='PATCHING_TOOL')
+    subparsers = parser.add_subparsers(dest='command')
+
+    # create the parser for the "pull" command
+    parser_pull = subparsers.add_parser('pull', help='pull a package list')
+    parser_pull.add_argument('machine', help='hostname or IP to query')
+
+    # create the parser for the "compare" command
+    parser_compare = subparsers.add_parser('compare', help='compare two lists')
+    parser_compare.add_argument('machine', help='hostname or IP to query')
+    parser_compare.add_argument('patch_file', help='local patching list file')
+    parser_compare.add_argument('-d','--diff-tool', nargs=1,
+            choices=['colordiff','diff','meld','wdiff'],
+            help='specify a diff tool to use in compare')
+    parser_compare.add_argument('-l', '--local', action='store_true',
+            help='use a local package file instead of querying a machine')
+    return parser
 
 def parse_exec_cmd(paramiko_output):
     """
-    Pull console output from stdout of paramiko .exec_command
+    Pull console output from stdout of paramiko .exec_command.
 
     @param paramiko_output: result from running .exec_command
     @retval: string representing single line of console return
@@ -35,12 +51,14 @@ def parse_exec_cmd(paramiko_output):
     readout = stdout.readlines().pop()
     return readout.rstrip()
 
-def do_dpkg(remote_machine):
+def get_package_list(remote_machine, for_compare):
     """
     Access remote machine to generate a dpkg list. Pull the package list to the
     local machine.
 
     @param remote_machine: machine name or IP address to get dpkg list
+    @param for_compare: True will pull specially-formated package list,
+        else will pull the typical list
     @return: file name of dpkg list .txt
     """
     # set up remote connection
@@ -65,7 +83,7 @@ def do_dpkg(remote_machine):
         dpkg_query = "rpm -qa --qf '%{NAME}    %{VERSION}-%{RELEASE}\n' | sort"
 
     # switch enabled to just copy over the regular dpkg list
-    if regular_dpkg_temp_switch:
+    if not for_compare:
         if version.find("CentOS") > 0:
             dpkg_query = "rpm -qa"
         else:
@@ -73,9 +91,9 @@ def do_dpkg(remote_machine):
 
     # generate the dpkg list
     output_file_name = "_".join([date,hostname,"dpkg"]) + ".txt"
-    if regular_dpkg_temp_switch:
+    if not for_compare:
         output_file_name = "_".join([date.split("_")[0],hostname,
-                                     "package","list"]) + ".txt"
+            "package","list"]) + ".txt"
     query = " ".join([dpkg_query,">",output_file_name])
     stdin, stdout, stderr = client.exec_command(query)
     time.sleep(2)  # allow dpkg to run
@@ -88,29 +106,31 @@ def do_dpkg(remote_machine):
     # close the connection
     sftp.close()
     client.close()
+    print "Package list pulled: " + output_file_name
     return output_file_name
 
-def compare_meld(dpkg_list_name, patching_list_name):
+def compare_with_tool(difftool, pkg_list, patch_list):
     """
-    Compare the dpkg list to the patching list with meld
+    Compare the package list to the patching list with the specified difftool.
 
-    @param dpkg_list_name: name of dpkg list
-    @param patching_list_name: name of patching list
+    @param difftool: name of the difftool to call
+    @param pkg_list: name of machine package list
+    @param patch_list: name of the patching list
     @return: none, opens the meld process
     """
-    subprocess.Popen(["meld", dpkg_list_name, patching_list_name])
+    subprocess.Popen([difftool, pkg_list, patch_list])
 
-def show_difference(patching_list_name, dpkg_list_name):
+def show_difference(pkg_list, patch_list):
     """
-    Print to screen only where patching list entries differ from dpkg entries
+    Print to screen only where patching list entries differ from package list entries.
 
-    @param dpkg_list_name: name of dpkg list
-    @param patching_list_name: name of patching list
+    @param pkg_list: name of machine package list
+    @param patch_list: name of patching list
     @return: none
     """
     EQUAL, NEQUAL, MISSING = 1, -1, 0
-    patch_file = open(patching_list_name)
-    dpkg_file = open(dpkg_list_name)
+    pkg_file = open(pkg_list)
+    patch_file = open(patch_list)
     delimiter = "    "
 
     # helper function to print to console with formatting
@@ -129,12 +149,12 @@ def show_difference(patching_list_name, dpkg_list_name):
 
     # compare the two files, print the matches
     # it is assumed the patching list is alpha order
-    dpkg, dver = parse_dpkg_row(dpkg_file.readline())
+    dpkg, dver = parse_dpkg_row(pkg_file.readline())
     for row in patch_file:
         [ppkg, pver] = parse_dpkg_row(row)
         try:
             while ppkg > dpkg:
-                dpkg, dver = parse_dpkg_row(dpkg_file.readline())
+                dpkg, dver = parse_dpkg_row(pkg_file.readline())
             if ppkg == dpkg:
                 if pver == dver: mode = EQUAL
                 else: mode = NEQUAL
@@ -146,12 +166,20 @@ def show_difference(patching_list_name, dpkg_list_name):
         print_helper(mode, ppkg, pver, dver)
 
     patch_file.close()
-    dpkg_file.close()
+    pkg_file.close()
 
 if __name__ == '__main__':
-    dpkg_list = do_dpkg(REMOTE_MACHINE)
-    print "Package list copied: " + dpkg_list
-    if not regular_dpkg_temp_switch:
-        # compare_meld(dpkg_list, PATCHING_LIST)
-        show_difference(PATCHING_LIST, dpkg_list)
+    argparser = init_argparse()
+    args = argparser.parse_args()
+
+    if args.command == 'pull':
+        get_package_list(args.machine, False)
+    elif args.command == 'compare':
+        pkg_name = args.machine
+        if not args.local:
+            pkg_name = get_package_list(args.machine, True)
+        if args.diff_tool:
+            compare_with_tool(args.diff_tool[0], pkg_name, args.patch_file)
+        else:
+            show_difference(pkg_name, args.patch_file)
 
