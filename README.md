@@ -5,7 +5,7 @@ the network and can also compare them in an expected format.
 ## Dependencies
 1. [Python 2.7.10](https://www.python.org/downloads/release/python-2710/) or
    higher - `apt-get install python`
-2. [paramiko](http://www.paramiko.org/) - pip install paramiko`
+2. [paramiko](http://www.paramiko.org/) - `pip install paramiko`
 
 ## Usage
 Get help information:
