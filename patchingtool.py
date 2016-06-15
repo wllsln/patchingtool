@@ -4,7 +4,7 @@
 title:          patchingcompare.py
 description:    tool to help compare package list to patching list
 author:         Willis Lin
-last-modify:    20160226
+last-modify:    20160401
 version:        1.0
 """
 
